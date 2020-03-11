@@ -1,0 +1,19 @@
+## on host
+docker cp hardkube_m1_1:/certificates/ca.pem . && \
+docker cp hardkube_m1_1:/certificates/admin.pem . && \
+docker cp hardkube_m1_1:/certificates/admin-key.pem .
+
+  kubectl config set-cluster mycluster \
+    --certificate-authority=/tmp/ca.pem \
+    --embed-certs=true \
+    --server=https://127.0.0.1:6443
+
+  kubectl config set-credentials admin \
+    --client-certificate=/tmp/admin.pem \
+    --client-key=/tmp/admin-key.pem
+
+  kubectl config set-context default \
+    --cluster=mycluster \
+    --user=admin
+
+  kubectl config use-context default

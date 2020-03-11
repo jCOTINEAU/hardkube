@@ -1,0 +1,28 @@
+# on HOST
+swapoff -a
+
+ETCDCTL_API=3 etcdctl member list \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/etcd/ca.pem \
+  --cert=/etc/etcd/kubernetes.pem \
+  --key=/etc/etcd/kubernetes-key.pem
+
+
+kubectl get componentstatuses --kubeconfig /certificates/admin.kubeconfig
+
+kubectl get nodes --kubeconfig /certificates/admin.kubeconfig
+kubectl get nodes -o json | jq '.items[] | .spec'
+
+##on master
+curl -H "Host: kubernetes.default.svc.cluster.local" -i http://127.0.0.1/healthz
+
+##from outside
+curl --cacert ca.pem -H"Host: kubernetes.default.svc.cluster.local" -i http://localhost:6443/version
+
+
+
+####
+docker-compose up
+wait till those verify command are on success
+apply flannel with the specyfied CIDR
+apply coredns

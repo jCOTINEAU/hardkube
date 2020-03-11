@@ -1,0 +1,165 @@
+version: '3'
+volumes:
+  cert:
+networks:
+  vpcbr:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+
+
+services:
+  cert:
+    volumes:
+      - cert:/certificates
+    command: 'cp -R . /certificates'
+    build:
+      context: pki/
+  m1:
+    networks:
+      vpcbr:
+        aliases:
+          - m1
+        ipv4_address: 10.5.0.6
+    volumes:
+      - cert:/certificates
+    build: .
+    hostname: m1
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m1:6443 --kubeconfig=/certificates/kube-proxy.kubeconfig &&
+             kubectl config set-credentials system:kube-proxy --client-certificate=/certificates/kube-proxy.pem --client-key=/certificates/kube-proxy-key.pem --embed-certs=true --kubeconfig=/certificates/kube-proxy.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:kube-proxy --kubeconfig=/certificates/kube-proxy.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/kube-proxy.kubeconfig &&
+             kubectl config set-credentials system:admin --client-certificate=/certificates/admin.pem --client-key=/certificates/admin-key.pem --embed-certs=true --kubeconfig=/certificates/admin.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:admin --kubeconfig=/certificates/admin.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/admin.kubeconfig &&
+             cp /certificates/ca.pem /certificates/kubernetes-key.pem /certificates/kubernetes.pem /etc/etcd/ &&
+             sleep 10 &&
+             etcd --logger=zap --name m1 --cert-file=/etc/etcd/kubernetes.pem --key-file=/etc/etcd/kubernetes-key.pem --peer-cert-file=/etc/etcd/kubernetes.pem --peer-key-file=/etc/etcd/kubernetes-key.pem --trusted-ca-file=/etc/etcd/ca.pem --peer-trusted-ca-file=/etc/etcd/ca.pem --peer-client-cert-auth --client-cert-auth --initial-advertise-peer-urls https://m1:2380 --listen-peer-urls https://10.5.0.6:2380 --listen-client-urls https://10.5.0.6:2379,https://127.0.0.1:2379 --advertise-client-urls https://10.5.0.6:2379 --initial-cluster-token etcd-cluster-0 --initial-cluster m1=https://m1:2380,m2=https://m2:2380,m3=https://m3:2380 --initial-cluster-state new --data-dir=/var/lib/etcd &
+             kube-apiserver --advertise-address=10.5.0.6 --allow-privileged=true --apiserver-count=3 --audit-log-maxage=30 --audit-log-maxbackup=3 --audit-log-maxsize=100 --audit-log-path=/var/log/audit.log --authorization-mode=Node,RBAC --bind-address=0.0.0.0 --client-ca-file=/certificates/ca.pem --enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota --etcd-cafile=/certificates/ca.pem --etcd-certfile=/certificates/kubernetes.pem --etcd-keyfile=/certificates/kubernetes-key.pem --etcd-servers=https://10.5.0.6:2379,https://10.5.0.7:2379,https://10.5.0.8:2379 --event-ttl=1h --encryption-provider-config=/certificates/encryption.yaml --kubelet-certificate-authority=/certificates/ca.pem --kubelet-client-certificate=/certificates/kubernetes.pem --kubelet-client-key=/certificates/kubernetes-key.pem --kubelet-https=true --runtime-config=api/all \
+             --service-account-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --service-node-port-range=30000-32767 --tls-cert-file=/certificates/kubernetes.pem --tls-private-key-file=/certificates/kubernetes-key.pem --v=2&
+             kube-controller-manager --allocate-node-cidrs=true --address=0.0.0.0 --cluster-cidr=10.200.0.0/16 --cluster-name=mycluster --cluster-signing-cert-file=/certificates/ca.pem --cluster-signing-key-file=/certificates/ca-key.pem --kubeconfig=/certificates/kube-controller-manager.kubeconfig --leader-elect=true --root-ca-file=/certificates/ca.pem --service-account-private-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --use-service-account-credentials=true&
+             kube-scheduler --config=/certificates/kube-scheduler.yaml &
+             nginx -g 'pid /tmp/nginx.pid; daemon off;'"
+
+
+  m2:
+    networks:
+      vpcbr:
+        aliases:
+          - m2
+        ipv4_address: 10.5.0.7
+    volumes:
+      - cert:/certificates
+    build: .
+    hostname: m2
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m2:6443 --kubeconfig=/certificates/kube-controller-manager.kubeconfig &&
+             kubectl config set-credentials system:kube-controller-manager --client-certificate=/certificates/kube-controller-manager.pem --client-key=/certificates/kube-controller-manager-key.pem --embed-certs=true --kubeconfig=/certificates/kube-controller-manager.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:kube-controller-manager --kubeconfig=/certificates/kube-controller-manager.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/kube-controller-manager.kubeconfig &&
+             cp /certificates/ca.pem /certificates/kubernetes-key.pem /certificates/kubernetes.pem /etc/etcd/ &&
+             sleep 10 &&
+             etcd --logger=zap --name m2 --cert-file=/etc/etcd/kubernetes.pem --key-file=/etc/etcd/kubernetes-key.pem --peer-cert-file=/etc/etcd/kubernetes.pem --peer-key-file=/etc/etcd/kubernetes-key.pem --trusted-ca-file=/etc/etcd/ca.pem --peer-trusted-ca-file=/etc/etcd/ca.pem --peer-client-cert-auth --client-cert-auth --initial-advertise-peer-urls https://m2:2380 --listen-peer-urls https://10.5.0.7:2380 --listen-client-urls https://10.5.0.7:2379,https://127.0.0.1:2379 --advertise-client-urls https://10.5.0.7:2379 --initial-cluster-token etcd-cluster-0 --initial-cluster m1=https://m1:2380,m2=https://m2:2380,m3=https://m3:2380 --initial-cluster-state new --data-dir=/var/lib/etcd &
+             kube-apiserver --advertise-address=10.5.0.7 --allow-privileged=true --apiserver-count=3 --audit-log-maxage=30 --audit-log-maxbackup=3 --audit-log-maxsize=100 --audit-log-path=/var/log/audit.log --authorization-mode=Node,RBAC --bind-address=0.0.0.0 --client-ca-file=/certificates/ca.pem --enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota --etcd-cafile=/certificates/ca.pem --etcd-certfile=/certificates/kubernetes.pem --etcd-keyfile=/certificates/kubernetes-key.pem --etcd-servers=https://10.5.0.6:2379,https://10.5.0.7:2379,https://10.5.0.8:2379 --event-ttl=1h --encryption-provider-config=/certificates/encryption.yaml --kubelet-certificate-authority=/certificates/ca.pem --kubelet-client-certificate=/certificates/kubernetes.pem --kubelet-client-key=/certificates/kubernetes-key.pem --kubelet-https=true --runtime-config=api/all \
+             --service-account-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --service-node-port-range=30000-32767 --tls-cert-file=/certificates/kubernetes.pem --tls-private-key-file=/certificates/kubernetes-key.pem --v=2&
+             kube-controller-manager --allocate-node-cidrs=true --address=0.0.0.0 --cluster-cidr=10.200.0.0/16 --cluster-name=mycluster --cluster-signing-cert-file=/certificates/ca.pem --cluster-signing-key-file=/certificates/ca-key.pem --kubeconfig=/certificates/kube-controller-manager.kubeconfig --leader-elect=true --root-ca-file=/certificates/ca.pem --service-account-private-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --use-service-account-credentials=true&
+             kube-scheduler --authentication-kubeconfig=/certificates/kube-scheduler.kubeconfig --kubeconfig=/certificates/kube-scheduler.kubeconfig --config=/certificates/kube-scheduler.yaml --v=2&
+             nginx -g 'pid /tmp/nginx.pid; daemon off;'"
+
+  m3:
+    networks:
+      vpcbr:
+        aliases:
+          - m3
+        ipv4_address: 10.5.0.8
+    volumes:
+      - cert:/certificates
+    build: .
+    hostname: m3
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m3:6443 --kubeconfig=/certificates/kube-scheduler.kubeconfig &&
+             kubectl config set-credentials system:kube-scheduler --client-certificate=/certificates/kube-scheduler.pem --client-key=/certificates/kube-scheduler-key.pem --embed-certs=true --kubeconfig=/certificates/kube-scheduler.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:kube-scheduler --kubeconfig=/certificates/kube-scheduler.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/kube-scheduler.kubeconfig &&
+             cp /certificates/ca.pem /certificates/kubernetes-key.pem /certificates/kubernetes.pem /etc/etcd/ &&
+             etcd --logger=zap --name m3 --cert-file=/etc/etcd/kubernetes.pem --key-file=/etc/etcd/kubernetes-key.pem --peer-cert-file=/etc/etcd/kubernetes.pem --peer-key-file=/etc/etcd/kubernetes-key.pem --trusted-ca-file=/etc/etcd/ca.pem --peer-trusted-ca-file=/etc/etcd/ca.pem --peer-client-cert-auth --client-cert-auth --initial-advertise-peer-urls https://m3:2380 --listen-peer-urls https://10.5.0.8:2380 --listen-client-urls https://10.5.0.8:2379,https://127.0.0.1:2379 --advertise-client-urls https://10.5.0.8:2379 --initial-cluster-token etcd-cluster-0 --initial-cluster m1=https://m1:2380,m2=https://m2:2380,m3=https://m3:2380 --initial-cluster-state new --data-dir=/var/lib/etcd &
+             kube-apiserver --advertise-address=10.5.0.8 --allow-privileged=true --apiserver-count=3 --audit-log-maxage=30 --audit-log-maxbackup=3 --audit-log-maxsize=100 --audit-log-path=/var/log/audit.log --authorization-mode=Node,RBAC --bind-address=0.0.0.0 --client-ca-file=/certificates/ca.pem --enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota --etcd-cafile=/certificates/ca.pem --etcd-certfile=/certificates/kubernetes.pem --etcd-keyfile=/certificates/kubernetes-key.pem --etcd-servers=https://10.5.0.6:2379,https://10.5.0.7:2379,https://10.5.0.8:2379 --event-ttl=1h --encryption-provider-config=/certificates/encryption.yaml --kubelet-certificate-authority=/certificates/ca.pem --kubelet-client-certificate=/certificates/kubernetes.pem --kubelet-client-key=/certificates/kubernetes-key.pem --kubelet-https=true --runtime-config=api/all \
+             --service-account-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --service-node-port-range=30000-32767 --tls-cert-file=/certificates/kubernetes.pem --tls-private-key-file=/certificates/kubernetes-key.pem --v=2&
+             kube-controller-manager --allocate-node-cidrs=true --address=0.0.0.0 --cluster-cidr=10.200.0.0/16 --cluster-name=mycluster --cluster-signing-cert-file=/certificates/ca.pem --cluster-signing-key-file=/certificates/ca-key.pem --kubeconfig=/certificates/kube-controller-manager.kubeconfig --leader-elect=true --root-ca-file=/certificates/ca.pem --service-account-private-key-file=/certificates/service-account-key.pem --service-cluster-ip-range=10.32.0.0/24 --use-service-account-credentials=true&
+             kube-scheduler  --config=/certificates/kube-scheduler.yaml --v=2&
+             nginx -g 'pid /tmp/nginx.pid; daemon off;'"
+
+  w1:
+    networks:
+      vpcbr:
+        aliases:
+          - w1
+    privileged: true
+    volumes:
+      - cert:/certificates
+    build:
+      context: worker
+    hostname: w1
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m1:6443 --kubeconfig=/certificates/w1.kubeconfig &&
+             kubectl config set-credentials system:node:w1 --client-certificate=/certificates/w1.pem --client-key=/certificates/w1-key.pem --embed-certs=true --kubeconfig=/certificates/w1.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:node:w1 --kubeconfig=/certificates/w1.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/w1.kubeconfig &&
+             containerd&
+             kubelet --config=/var/lib/kubelet/w1-kubelet-config.yaml --container-runtime=remote --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock --image-pull-progress-deadline=2m --kubeconfig=/certificates/w1.kubeconfig --network-plugin=cni --register-node=true --v=2&
+             kube-proxy --config=kube-proxy-config.yaml&
+             tail -F /dev/null"
+  w2:
+    networks:
+      vpcbr:
+        aliases:
+          - w2
+    privileged: true
+    volumes:
+      - cert:/certificates
+    build:
+      context: worker
+    hostname: w2
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m1:6443 --kubeconfig=/certificates/w2.kubeconfig &&
+             kubectl config set-credentials system:node:w2 --client-certificate=/certificates/w2.pem --client-key=/certificates/w2-key.pem --embed-certs=true --kubeconfig=/certificates/w2.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:node:w2 --kubeconfig=/certificates/w2.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/w2.kubeconfig &&
+             containerd&
+             kubelet --config=/var/lib/kubelet/w2-kubelet-config.yaml --container-runtime=remote --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock --image-pull-progress-deadline=2m --kubeconfig=/certificates/w2.kubeconfig --network-plugin=cni --register-node=true --v=2&
+             kube-proxy --config=kube-proxy-config.yaml&
+             tail -F /dev/null"
+  w3:
+    networks:
+      vpcbr:
+        aliases:
+          - w3
+    privileged: true
+    volumes:
+      - cert:/certificates
+    build:
+      context: worker
+    hostname: w3
+    command: >
+      sh -c "kubectl config set-cluster mycluster --certificate-authority=/certificates/ca.pem --embed-certs=true --server=https://m1:6443 --kubeconfig=/certificates/w3.kubeconfig &&
+             kubectl config set-credentials system:node:w3 --client-certificate=/certificates/w3.pem --client-key=/certificates/w3-key.pem --embed-certs=true --kubeconfig=/certificates/w3.kubeconfig &&
+             kubectl config set-context default --cluster=mycluster --user=system:node:w3 --kubeconfig=/certificates/w3.kubeconfig &&
+             kubectl config use-context default --kubeconfig=/certificates/w3.kubeconfig &&
+             containerd&
+             kubelet --config=/var/lib/kubelet/w3-kubelet-config.yaml --container-runtime=remote --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock --image-pull-progress-deadline=2m --kubeconfig=/certificates/w3.kubeconfig --network-plugin=cni --register-node=true --v=2&
+             kube-proxy --config=kube-proxy-config.yaml&
+             tail -F /dev/null"
+  loadbalance:
+    networks:
+      vpcbr:
+        aliases:
+          - loadbalance
+    volumes:
+      - cert:/certificates
+    build:
+      context: loadbalancer
+    hostname: loadbalancer
+    ports:
+      - "6443:6443"
